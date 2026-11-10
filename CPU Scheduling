@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>CPU Scheduling Simulator</title>
+<style>
+:root{--bg:#f4f7f6;--card:#fff;--pri:#2563eb;--sec:#64748b;--acc:#10b981;--txt:#1e293b;--bor:#e2e8f0}
+*{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',sans-serif}
+body{background:var(--bg);color:var(--txt);padding:20px;display:flex;flex-direction:column;align-items:center}
+header{text-align:center;margin-bottom:20px}
+.container{display:grid;grid-template-columns:300px 1fr;gap:20px;width:100%;max-width:1100px}
+.card{background:var(--card);border-radius:8px;padding:20px;box-shadow:0 4px 6px -1px rgba(0,0,0,.1);border:1px solid var(--bor)}
+h2{font-size:1.1rem;margin-bottom:12px;border-bottom:2px solid var(--bor);padding-bottom:6px}
+.fg{margin-bottom:10px}.fg label{display:block;font-size:.8rem;font-weight:600;margin-bottom:4px;color:#475569}
+.fg input,.fg select{width:100%;padding:7px;border:1px solid var(--bor);border-radius:4px;font-size:.9rem}
+.bg{display:flex;gap:6px;margin-top:12px}
+button{flex:1;padding:8px;border:none;border-radius:4px;font-weight:600;cursor:pointer;color:#fff;font-size:.85rem}
+.bp{background:var(--pri)}.ba{background:var(--acc)}.bd{background:#ef4444}.bc{background:#8b5cf6}
+table{width:100%;border-collapse:collapse;margin-bottom:15px;font-size:.85rem}
+th,td{padding:8px;text-align:center;border-bottom:1px solid var(--bor)}
+th{background:#f8fafc;color:#475569}
+.g-cont{display:flex;align-items:center;margin-top:10px;min-height:50px;position:relative;padding-bottom:20px;overflow-x:auto}
+.g-block{height:40px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;font-size:.8rem;position:relative;border-right:1px solid #fff}
+.g-time,.g-time-end{position:absolute;bottom:-18px;font-size:.7rem;color:var(--sec)}
+.g-time{left:0}.g-time-end{right:0}
+.metrics{display:flex;gap:10px;background:#f8fafc;padding:10px;border-radius:6px;border:1px solid var(--bor)}
+.m-box{flex:1;text-align:center}.m-box span{font-size:.75rem;color:var(--sec);display:block}.m-box strong{color:var(--pri)}
+.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);justify-content:center;align-items:center}
+.modal-c{background:#fff;padding:20px;border-radius:8px;width:90%;max-width:450px}
+.close{float:right;cursor:pointer;color:var(--sec)}
+</style>
+</head>
+<body>
+<header><h1>CPU Scheduling Simulator</h1><p>Platform Technologies (ITE211)</p></header>
+<div class="container">
+<div class="card">
+<h2>Process Input</h2>
+<form id="form">
+<div class="fg"><label>PID</label><input id="pid" value="P1" required></div>
+<div class="fg"><label>AT</label><input type="number" id="at" value="0" min="0" required></div>
+<div class="fg"><label>BT</label><input type="number" id="bt" value="5" min="1" required></div>
+<div class="fg"><label>Priority</label><input type="number" id="pr" value="0" min="0"></div>
+<div class="bg"><button type="submit" class="bp">Add</button><button type="button" id="clr" class="bd">Reset</button></div>
+</form>
+<h2 style="margin-top:20px">Settings</h2>
+<div class="fg"><label>Algorithm</label><select id="algo"><option value="FCFS">FCFS</option><option value="SJF">SJF (Non-Preemptive)</option><option value="SRTF">SRTF</option><option value="RR">Round Robin</option></select></div>
+<div class="fg" id="tq-box" style="display:none"><label>Time Quantum</label><input type="number" id="tq" value="2" min="1"></div>
+<div class="bg"><button type="button" id="sim" class="ba">Simulate</button></div>
+<div class="bg"><button type="button" id="cmp" class="bc">Compare FCFS & SJF</button></div>
+</div>
+<div class="card">
+<h2>Results Table</h2>
+<table id="tbl"><thead><tr><th>PID</th><th>AT</th><th>BT</th><th>Pr</th><th>CT</th><th>TAT</th><th>WT</th><th>RT</th></tr></thead><tbody><tr><td colspan="8">No processes added.</td></tr></tbody></table>
+<div class="metrics"><div class="m-box"><span>Avg Waiting Time</span><strong id="avg-wt">0.00</strong></div><div class="m-box"><span>Avg Turnaround Time</span><strong id="avg-tat">0.00</strong></div></div>
+<h2 style="margin-top:20px">Gantt Chart</h2>
+<div class="g-cont" id="gantt"><span style="color:var(--sec);font-size:.85rem">Run simulation to view Gantt Chart</span></div>
+</div>
+</div>
+<div class="modal" id="modal"><div class="modal-c"><span class="close" id="cls">&times;</span><h2>Comparison Results</h2><div id="m-body" style="margin-top:10px;line-height:1.5"></div></div></div>
+<script>
+let P=[], colors=['#2563eb','#10b981','#f59e0b','#8b5cf6','#ec4899','#06b6d4'];
+algo.onchange=()=>tqBox.style.display=algo.value==='RR'?'block':'none';
+form.onsubmit=e=>{e.preventDefault();P.push({pid:pid.value,at:+at.value,bt:+bt.value,pr:+pr.value});upTbl();pid.value='P'+(P.length+1);at.value=0;bt.value=5;};
+clr.onclick=()=>{P=[];upTbl();gantt.innerHTML='<span style="color:var(--sec);font-size:.85rem">Run simulation to view Gantt Chart</span>';avgWt.innerText='0.00';avgTat.innerText='0.00';pid.value='P1';};
+function upTbl(){tbl.querySelector('tbody').innerHTML=P.length?P.map(p=>`<tr><td>${p.pid}</td><td>${p.at}</td><td>${p.bt}</td><td>${p.pr}</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>`).join(''):'<tr><td colspan="8">No processes added.</td></tr>';}
+
+function runFCFS(procs){
+    let l=procs.map(p=>({...p})).sort((a,b)=>a.at-b.at), t=0, tl=[];
+    l.forEach(p=>{if(t<p.at){tl.push({pid:'IDLE',start:t,end:p.at});t=p.at;}p.rt=t-p.at;let s=t;t+=p.bt;p.ct=t;p.tat=p.ct-p.at;p.wt=p.tat-p.bt;tl.push({pid:p.pid,start:s,end:t});});
+    return {procs:l,timeline:tl};
+}
+function runSJF(procs){
+    let l=procs.map(p=>({...p})), n=l.length, comp=0, t=0, done=Array(n).fill(false), tl=[];
+    while(comp<n){
+        let idx=-1, minBt=Infinity;
+        for(let i=0;i<n;i++)if(l[i].at<=t&&!done[i]&&(l[i].bt<minBt||(l[i].bt===minBt&&l[i].at<l[idx].at))) {minBt=l[i].bt;idx=i;}
+        if(idx===-1){let next=Math.min(...l.filter((_,i)=>!done[i]).map(p=>p.at));tl.push({pid:'IDLE',start:t,end:next});t=next;}
+        else{let p=l[idx];p.rt=t-p.at;let s=t;t+=p.bt;p.ct=t;p.tat=p.ct-p.at;p.wt=p.tat-p.bt;done[idx]=true;comp++;tl.push({pid:p.pid,start:s,end:t});}
+    }
+    return {procs:l,timeline:tl};
+}
+function runSRTF(procs){
+    let l=procs.map(p=>({...p,rem:p.bt,rt:-1})), n=l.length, comp=0, t=0, tl=[], last=null, sExec=0;
+    while(comp<n){
+        let idx=-1, minRem=Infinity;
+        for(let i=0;i<n;i++)if(l[i].at<=t&&l[i].rem>0&&l[i].rem<minRem){minRem=l[i].rem;idx=i;}
+        if(idx===-1){if(last){tl.push({pid:last,start:sExec,end:t});last=null;}let next=Math.min(...l.filter(p=>p.rem>0).map(p=>p.at));if(t<next){tl.push({pid:'IDLE',start:t,end:next});t=next;}}
+        else{let p=l[idx];if(p.rt===-1)p.rt=t-p.at;if(last!==p.pid){if(last)tl.push({pid:last,start:sExec,end:t});last=p.pid;sExec=t;}p.rem--;t++;if(p.rem===0){p.ct=t;p.tat=p.ct-p.at;p.wt=p.tat-p.bt;comp++;tl.push({pid:p.pid,start:sExec,end:t});last=null;}}
+    }
+    return {procs:l,timeline:tl};
+}
+function runRR(procs,tq){
+    let l=procs.map(p=>({...p,rem:p.bt,rt:-1})).sort((a,b)=>a.at-b.at), n=l.length, t=l[0].at, q=[], vis=Array(n).fill(false), tl=[];
+    l.forEach((p,i)=>{if(p.at<=t){q.push(i);vis[i]=true;}});
+    let comp=0;
+    while(comp<n){
+        if(!q.length){let unv=l.map((p,i)=>({at:p.at,i})).filter((_,i)=>!vis[i]);if(unv.length){let nxt=unv.reduce((m,p)=>p.at<m.at?p:m,unv[0]);tl.push({pid:'IDLE',start:t,end:nxt.at});t=nxt.at;l.forEach((p,i)=>{if(p.at<=t&&!vis[i]){q.push(i);vis[i]=true;}});}}
+        if(q.length){let i=q.shift(), p=l[i];if(p.rt===-1)p.rt=t-p.at;let ex=Math.min(tq,p.rem), s=t;t+=ex;p.rem-=ex;tl.push({pid:p.pid,start:s,end:t});l.forEach((p,j)=>{if(p.at<=t&&!vis[j]){q.push(j);vis[j]=true;}});if(p.rem>0)q.push(i);else{p.ct=t;p.tat=p.ct-p.at;p.wt=p.tat-p.bt;comp++;}}
+    }
+    return {procs:l,timeline:tl};
+}
+const tqBox = document.getElementById('tq-box');
+const avgWt = document.getElementById('avg-wt');
+const avgTat = document.getElementById('avg-tat');
+
+sim.onclick=()=>{if(!P.length)return alert('Add processes first');let a=algo.value, tq=+document.getElementById('tq').value||2, res;if(a==='FCFS')res=runFCFS(P);else if(a==='SJF')res=runSJF(P);else if(a==='SRTF')res=runSRTF(P);else res=runRR(P,tq);render(res.procs,res.timeline);};
+
+function render(procs,tl){
+    let twt=0, ttat=0;
+    tbl.querySelector('tbody').innerHTML=procs.map(p=>{twt+=p.wt;ttat+=p.tat;return `<tr><td>${p.pid}</td><td>${p.at}</td><td>${p.bt}</td><td>${p.pr}</td><td>${p.ct}</td><td>${p.tat}</td><td>${p.wt}</td><td>${p.rt}</td></tr>`;}).join('');
+    avgWt.innerText=(twt/procs.length).toFixed(2);
+    avgTat.innerText=(ttat/procs.length).toFixed(2);
+    let dur=tl[tl.length-1].end-tl[0].start, cm={}, cIdx=0;
+    gantt.innerHTML=tl.map((item,idx)=>{
+        if(item.pid!=='IDLE'&&!cm[item.pid])cm[item.pid]=colors[cIdx++%colors.length];
+        let w=Math.max(((item.end-item.start)/dur)*100,5), bg=item.pid==='IDLE'?'#94a3b8':cm[item.pid];
+        return `<div class="g-block" style="width:${w}%;background:${bg}">${item.pid}<span class="g-time">${item.start}</span>${idx===tl.length-1?`<span class="g-time-end">${item.end}</span>`:''}</div>`;
+    }).join('');
+}
+cmp.onclick=()=>{if(!P.length)return alert('Add processes first');let f=runFCFS(P),s=runSJF(P);document.getElementById('m-body').innerHTML=`<b>FCFS:</b> WT=${(f.procs.reduce((a,b)=>a+b.wt,0)/P.length).toFixed(2)}, TAT=${(f.procs.reduce((a,b)=>a+b.tat,0)/P.length).toFixed(2)}<br><br><b>SJF:</b> WT=${(s.procs.reduce((a,b)=>a+b.wt,0)/P.length).toFixed(2)}, TAT=${(s.procs.reduce((a,b)=>a+b.tat,0)/P.length).toFixed(2)}`;modal.style.display='flex';};
+cls.onclick=()=>modal.style.display='none';
+</script>
+</body>
+</html>
